@@ -3,11 +3,10 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import session from "express-session";
 import { type Express, type Request, type Response, type NextFunction } from "express";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import connectPgSimple from "connect-pg-simple";
-import pg from "pg";
 
 // Safe user type without password
 interface SafeUser {
@@ -25,18 +24,25 @@ declare global {
 
 export function setupAuth(app: Express) {
   const PgStore = connectPgSimple(session);
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  const sessionSecret = process.env.SESSION_SECRET;
+
+  if (!sessionSecret) {
+    throw new Error("SESSION_SECRET must be set");
+  }
+
+  // Vercel sits behind a proxy, so we need to trust it for secure cookies
+  app.set("trust proxy", 1);
 
   app.use(
     session({
       store: new PgStore({ pool, createTableIfMissing: true }),
-      secret: process.env.SESSION_SECRET || "laporan-otomatis-secret-2024",
+      secret: sessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: {
         secure: process.env.NODE_ENV === "production",
         httpOnly: true,
-        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 hari
+        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
       },
     })
   );
