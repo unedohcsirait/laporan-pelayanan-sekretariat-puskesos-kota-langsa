@@ -113,23 +113,48 @@ export default function LaporanHarianPage() {
     item.jenisLayanan.namaLayanan.toLowerCase().includes(search.toLowerCase())
   );
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     if (!filteredData) return;
+    
+    let appTitle = "LAPORAN PELAYANAN SEKRETARIAT PUSKESOS KOTA LANGSA";
+    let appSubtitle = "DI KANTOR DINAS SOSIAL KOTA LANGSA";
+    
+    try {
+      const tRes = await fetch("/api/settings/app_title").then(res => res.json());
+      const sRes = await fetch("/api/settings/app_subtitle").then(res => res.json());
+      if (tRes.value) appTitle = tRes.value;
+      if (sRes.value) appSubtitle = sRes.value;
+    } catch (e) {}
+
     const doc = new jsPDF();
-    doc.text(`Laporan Pelayanan - ${month}/${year}`, 14, 15);
+    
+    // Header
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text(appTitle, 105, 15, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(appSubtitle, 105, 22, { align: "center" });
+    doc.setLineWidth(0.5);
+    doc.line(20, 25, 190, 25);
+    
+    doc.setFontSize(10);
+    doc.text(`Periode: ${format(new Date(2026, Number(month)-1, 1), "MMMM yyyy", { locale: localeId })}`, 14, 35);
     
     autoTable(doc, {
-      head: [['Tanggal', 'Jenis Layanan', 'Jumlah', 'Keterangan']],
-      body: filteredData.map(row => [
-        format(new Date(row.tanggal), "dd MMM yyyy", { locale: localeId }),
+      head: [['NO', 'JENIS LAYANAN', 'TANGGAL', 'JUMLAH', 'KETERANGAN']],
+      body: filteredData.map((row, index) => [
+        index + 1,
         row.jenisLayanan.namaLayanan,
-        row.jumlah,
+        format(new Date(row.tanggal), "dd MMM yyyy", { locale: localeId }),
+        `${row.jumlah} orang`,
         row.keterangan || "-"
       ]),
-      startY: 20
+      startY: 40,
+      styles: { fontSize: 8 },
+      headStyles: { fillStyle: 'DF', fillColor: [14, 165, 233] }
     });
     
-    doc.save(`laporan-${month}-${year}.pdf`);
+    doc.save(`laporan-puskesos-${month}-${year}.pdf`);
   };
 
   const exportExcel = () => {

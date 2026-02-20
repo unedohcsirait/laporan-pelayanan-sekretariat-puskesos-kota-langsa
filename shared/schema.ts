@@ -4,6 +4,12 @@ import { z } from "zod";
 import { relations } from "drizzle-orm";
 
 // === TABLE DEFINITIONS ===
+export const settings = pgTable("settings", {
+  id: serial("id").primaryKey(),
+  key: text("key").unique().notNull(),
+  value: text("value").notNull(),
+});
+
 export const jenisLayanan = pgTable("jenis_layanan", {
   id: serial("id").primaryKey(),
   namaLayanan: text("nama_layanan").notNull(),

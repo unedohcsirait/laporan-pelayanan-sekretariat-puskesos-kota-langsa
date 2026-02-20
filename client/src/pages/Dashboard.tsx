@@ -6,10 +6,11 @@ import {
   PieChart, Pie, Cell, Legend 
 } from "recharts";
 import { format } from "date-fns";
-import { Activity, Calendar, Trophy, TrendingUp, Filter } from "lucide-react";
-import { useState } from "react";
+import { Activity, Calendar, Trophy, Building2 } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiRequest } from "@/lib/queryClient";
 
 const MONTHS = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
@@ -24,8 +25,19 @@ export default function Dashboard() {
   
   const [month, setMonth] = useState(String(currentMonth));
   const [year, setYear] = useState(String(currentYear));
+  const [appTitle, setAppTitle] = useState("LAPORAN PELAYANAN SEKRETARIAT PUSKESOS KOTA LANGSA");
+  const [appSubtitle, setAppSubtitle] = useState("DI KANTOR DINAS SOSIAL KOTA LANGSA");
   
   const { data: summary, isLoading } = useLaporanSummary(month, year);
+
+  useEffect(() => {
+    fetch("/api/settings/app_title").then(res => res.json()).then(data => {
+      if (data.value) setAppTitle(data.value);
+    });
+    fetch("/api/settings/app_subtitle").then(res => res.json()).then(data => {
+      if (data.value) setAppSubtitle(data.value);
+    });
+  }, []);
 
   const formattedChartData = summary?.totalPerHari.map(item => ({
     name: format(new Date(item.tanggal), "dd MMM"),
@@ -41,13 +53,18 @@ export default function Dashboard() {
     <Layout>
       <div className="space-y-8">
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Dashboard</h1>
-            <p className="text-muted-foreground">Ringkasan performa pelayanan bulanan.</p>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-primary/5 p-6 rounded-2xl border border-primary/10">
+          <div className="flex items-center gap-4">
+            <div className="bg-primary/10 p-3 rounded-xl">
+              <Building2 className="h-8 w-8 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl md:text-2xl font-display font-bold text-primary leading-tight uppercase">{appTitle}</h1>
+              <p className="text-sm md:text-base text-muted-foreground font-medium uppercase">{appSubtitle}</p>
+            </div>
           </div>
           
-          <div className="flex gap-2 bg-card border border-border p-1 rounded-lg shadow-sm">
+          <div className="flex gap-2 bg-white border border-border p-1 rounded-lg shadow-sm">
             <Select value={month} onValueChange={setMonth}>
               <SelectTrigger className="w-[140px] border-none shadow-none focus:ring-0">
                 <SelectValue placeholder="Bulan" />
@@ -106,10 +123,9 @@ export default function Dashboard() {
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Bar Chart */}
           <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
             <div className="mb-6">
-              <h3 className="text-lg font-bold font-display">Grafik Harian</h3>
+              <h3 className="text-lg font-bold font-display text-primary">Grafik Harian</h3>
               <p className="text-sm text-muted-foreground">Tren jumlah pelayanan per hari</p>
             </div>
             <div className="h-[300px] w-full">
@@ -146,10 +162,9 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Pie Chart */}
           <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
             <div className="mb-6">
-              <h3 className="text-lg font-bold font-display">Komposisi Layanan</h3>
+              <h3 className="text-lg font-bold font-display text-primary">Komposisi Layanan</h3>
               <p className="text-sm text-muted-foreground">Proporsi total pasien per jenis layanan</p>
             </div>
             <div className="h-[300px] w-full">

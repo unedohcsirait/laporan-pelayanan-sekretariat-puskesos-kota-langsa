@@ -9,6 +9,18 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // Settings
+  app.get("/api/settings/:key", async (req, res) => {
+    const value = await storage.getSetting(req.params.key);
+    res.json({ value });
+  });
+
+  app.post("/api/settings", async (req, res) => {
+    const { key, value } = req.body;
+    await storage.setSetting(key, value);
+    res.status(204).end();
+  });
+
   // Jenis Layanan
   app.get(api.jenisLayanan.list.path, async (req, res) => {
     const data = await storage.getJenisLayananList();
@@ -150,22 +162,57 @@ export async function registerRoutes(
 }
 
 async function seedDatabase() {
+  // Seed basic settings
+  const title = await storage.getSetting("app_title");
+  if (!title) {
+    await storage.setSetting("app_title", "LAPORAN PELAYANAN SEKRETARIAT PUSKESOS KOTA LANGSA");
+    await storage.setSetting("app_subtitle", "DI KANTOR DINAS SOSIAL KOTA LANGSA");
+  }
+
   const existingLayanan = await storage.getJenisLayananList();
   if (existingLayanan.length === 0) {
-    const l1 = await storage.createJenisLayanan({ namaLayanan: "Pembuatan KTP", status: true });
-    const l2 = await storage.createJenisLayanan({ namaLayanan: "Pembuatan KK", status: true });
-    const l3 = await storage.createJenisLayanan({ namaLayanan: "Surat Keterangan Pindah", status: true });
+    const services = [
+      "Pengaktifan BPJS",
+      "Pengecekan DESIL",
+      "Pembuatan DTKS",
+      "Rekomendasi Jampersal",
+      "Rekomendasi KIP Kuliah",
+      "Surat Keterangan Terdaftar DTKS",
+      "Penerbitan Kartu Kusuka",
+      "Laporan Anak Terlantar",
+      "Laporan Lansia Terlantar",
+      "Penyelesaian Konflik Sosial",
+      "Bantuan Masa Panik",
+      "Usulan Rumah Layak Huni",
+      "Penerbitan Surat Kematian (Ahli Waris)"
+    ];
+
+    const createdLayanan = [];
+    for (const name of services) {
+      const s = await storage.createJenisLayanan({ namaLayanan: name, status: true });
+      createdLayanan.push(s);
+    }
     
-    // Create some laporan
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    // Create some realistic laporan for January 2026 as per Excel
+    const jan26 = (day: number) => `2026-01-${day.toString().padStart(2, '0')}`;
     
-    const fmt = (d: Date) => d.toISOString().split('T')[0];
-    
-    await storage.createLaporan({ tanggal: fmt(today), jenisLayananId: l1.id, jumlah: 15, keterangan: "Normal" });
-    await storage.createLaporan({ tanggal: fmt(today), jenisLayananId: l2.id, jumlah: 8, keterangan: "" });
-    await storage.createLaporan({ tanggal: fmt(yesterday), jenisLayananId: l1.id, jumlah: 20, keterangan: "Ramai" });
-    await storage.createLaporan({ tanggal: fmt(yesterday), jenisLayananId: l3.id, jumlah: 5, keterangan: "" });
+    // Seed with some data from the first week of Jan 2026
+    // Monday Jan 5 to Friday Jan 9, 2026
+    const days = [5, 6, 7, 8, 9];
+    const dataMatrix = [
+      [26, 13, 18, 7, 4],  // BPJS
+      [36, 28, 31, 19, 18] // DESIL
+    ];
+
+    for (let i = 0; i < dataMatrix.length; i++) {
+      for (let j = 0; j < days.length; j++) {
+        await storage.createLaporan({
+          tanggal: jan26(days[j]),
+          jenisLayananId: createdLayanan[i].id,
+          jumlah: dataMatrix[i][j],
+          keterangan: "-"
+        });
+      }
+    }
   }
 }

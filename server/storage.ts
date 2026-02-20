@@ -1,5 +1,6 @@
 import { db } from "./db";
 import {
+  settings,
   jenisLayanan,
   laporanHarian,
   type JenisLayanan,
@@ -13,6 +14,10 @@ import {
 import { eq, and, sql, desc } from "drizzle-orm";
 
 export interface IStorage {
+  // Settings
+  getSetting(key: string): Promise<string | undefined>;
+  setSetting(key: string, value: string): Promise<void>;
+
   // Jenis Layanan
   getJenisLayananList(): Promise<JenisLayanan[]>;
   getJenisLayanan(id: number): Promise<JenisLayanan | undefined>;
@@ -33,6 +38,18 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Settings
+  async getSetting(key: string): Promise<string | undefined> {
+    const [result] = await db.select().from(settings).where(eq(settings.key, key));
+    return result?.value;
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    await db.insert(settings)
+      .values({ key, value })
+      .onConflictDoUpdate({ target: settings.key, set: { value } });
+  }
+
   // Jenis Layanan
   async getJenisLayananList(): Promise<JenisLayanan[]> {
     return await db.select().from(jenisLayanan).orderBy(jenisLayanan.namaLayanan);
