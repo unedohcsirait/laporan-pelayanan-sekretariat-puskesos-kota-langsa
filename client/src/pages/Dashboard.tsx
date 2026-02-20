@@ -5,12 +5,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend 
 } from "recharts";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { Activity, Calendar, Trophy, Building2 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiRequest } from "@/lib/queryClient";
 
 const MONTHS = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
@@ -41,19 +41,19 @@ export default function Dashboard() {
   }, []);
 
   const formattedChartData = isYearly 
-    ? summary?.totalPerBulan.map(item => ({
+    ? (summary?.totalPerBulan ?? []).map(item => ({
         name: MONTHS[item.bulan - 1],
         value: item.total
-      })) || []
-    : summary?.totalPerHari.map(item => ({
-        name: format(new Date(item.tanggal), "dd MMM"),
+      }))
+    : (summary?.totalPerHari ?? []).map(item => ({
+        name: format(parseISO(item.tanggal), "dd MMM"),
         value: item.total
-      })) || [];
+      }));
 
-  const pieChartData = summary?.rankingLayanan.map(item => ({
+  const pieChartData = (summary?.rankingLayanan ?? []).map(item => ({
     name: item.namaLayanan,
     value: item.total
-  })) || [];
+  }));
 
   return (
     <Layout>
@@ -70,23 +70,26 @@ export default function Dashboard() {
             </div>
           </div>
           
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-2">
-              <Button 
-                variant={isYearly ? "outline" : "default"} 
-                size="sm" 
+          <div className="flex flex-col gap-2 items-end">
+            {/* Bulanan / Tahunan toggle */}
+            <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1 gap-1">
+              <Button
+                variant={!isYearly ? "default" : "ghost"}
+                size="sm"
                 onClick={() => setIsYearly(false)}
               >
                 Bulanan
               </Button>
-              <Button 
-                variant={isYearly ? "default" : "outline"} 
-                size="sm" 
+              <Button
+                variant={isYearly ? "default" : "ghost"}
+                size="sm"
                 onClick={() => setIsYearly(true)}
               >
                 Tahunan
               </Button>
             </div>
+
+            {/* Period Picker */}
             <div className="flex gap-2 bg-white border border-border p-1 rounded-lg shadow-sm">
               {!isYearly && (
                 <>
@@ -130,7 +133,7 @@ export default function Dashboard() {
               <StatCard
                 title={isYearly ? "Total Pelayanan Tahun Ini" : "Total Pelayanan Bulan Ini"}
                 value={summary?.totalKeseluruhan || 0}
-                description={isYearly ? `Total pasien tahun ${year}` : `Total pasien bulan ${MONTHS[Number(month)-1]} ${year}`}
+                description={`Total pasien ${isYearly ? `Tahun ${year}` : `${MONTHS[Number(month)-1]} ${year}`}`}
                 icon={Activity}
               />
               <StatCard
@@ -157,7 +160,9 @@ export default function Dashboard() {
                 {isYearly ? "Tren Bulanan" : "Tren Harian"}
               </h3>
               <p className="text-sm text-muted-foreground">
-                {isYearly ? `Jumlah pelayanan per bulan tahun ${year}` : `Jumlah pelayanan per hari bulan ${MONTHS[Number(month)-1]}`}
+                {isYearly
+                  ? `Jumlah pelayanan per bulan tahun ${year}`
+                  : `Jumlah pelayanan per hari bulan ${MONTHS[Number(month)-1]}`}
               </p>
             </div>
             <div className="h-[300px] w-full">
@@ -167,19 +172,15 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={formattedChartData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
-                      dy={10}
+                    <XAxis
+                      dataKey="name" axisLine={false} tickLine={false}
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} dy={10}
                     />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
+                    <YAxis
+                      axisLine={false} tickLine={false}
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                     />
-                    <Tooltip 
+                    <Tooltip
                       cursor={{ fill: 'hsl(var(--muted)/0.5)' }}
                       contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                     />
@@ -206,22 +207,15 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={pieChartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="value"
+                      data={pieChartData} cx="50%" cy="50%"
+                      innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value"
                     >
-                      {pieChartData.map((entry, index) => (
+                      {pieChartData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                    />
-                    <Legend verticalAlign="bottom" height={36}/>
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                    <Legend verticalAlign="bottom" height={36} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (

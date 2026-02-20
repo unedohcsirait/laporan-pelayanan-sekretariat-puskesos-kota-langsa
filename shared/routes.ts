@@ -21,6 +21,10 @@ export const summaryResponseSchema = z.object({
     tanggal: z.string(),
     total: z.number()
   })),
+  totalPerBulan: z.array(z.object({
+    bulan: z.number(),
+    total: z.number()
+  })).optional(),
   rataRataPerHari: z.number(),
   rankingLayanan: z.array(z.object({
     jenisLayananId: z.number(),

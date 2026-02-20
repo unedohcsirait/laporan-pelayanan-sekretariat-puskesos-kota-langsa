@@ -10,6 +10,13 @@ export const settings = pgTable("settings", {
   value: text("value").notNull(),
 });
 
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").unique().notNull(),
+  password: text("password").notNull(), // bcrypt hashed
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const jenisLayanan = pgTable("jenis_layanan", {
   id: serial("id").primaryKey(),
   namaLayanan: text("nama_layanan").notNull(),
@@ -53,3 +60,8 @@ export type UpdateLaporanHarianRequest = Partial<InsertLaporanHarian>;
 
 // Laporan harian joined with Jenis Layanan
 export type LaporanWithLayanan = LaporanHarian & { jenisLayanan: JenisLayanan };
+
+// Users
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;

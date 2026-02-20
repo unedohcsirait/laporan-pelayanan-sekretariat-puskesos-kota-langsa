@@ -3,14 +3,97 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import passport from "passport";
+import { requireAuth, seedAdminUser } from "./auth";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  // Settings
+  // === AUTH ROUTES (tidak perlu auth) ===
+  app.post("/api/login", (req, res, next) => {
+    passport.authenticate("local", (err: any, user: any, info: any) => {
+      if (err) return next(err);
+      if (!user) {
+        return res.status(401).json({ message: info?.message || "Login gagal" });
+      }
+      req.logIn(user, (err) => {
+        if (err) return next(err);
+        res.json({ user });
+      });
+    })(req, res, next);
+  });
+
+  app.post("/api/logout", (req, res, next) => {
+    req.logout((err) => {
+      if (err) return next(err);
+      res.status(204).end();
+    });
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    if (req.isAuthenticated()) {
+      res.json({ user: req.user });
+    } else {
+      res.status(401).json({ message: "Unauthorized" });
+    }
+  });
+
+  // === SEMUA ROUTE DI BAWAH INI BUTUH AUTH ===
+  app.use("/api", requireAuth);
+
+  // Edit akun (username / password)
+  app.put("/api/auth/account", async (req, res, next) => {
+    try {
+      const { db } = await import("./db");
+      const { users } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const bcrypt = (await import("bcryptjs")).default;
+
+      const userId = (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { username, currentPassword, newPassword } = req.body as {
+        username?: string;
+        currentPassword?: string;
+        newPassword?: string;
+      };
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) return res.status(404).json({ message: "User tidak ditemukan" });
+
+      // Verify current password
+      if (!currentPassword) return res.status(400).json({ message: "Password saat ini diperlukan" });
+      const valid = await bcrypt.compare(currentPassword, user.password);
+      if (!valid) return res.status(401).json({ message: "Password saat ini salah" });
+
+      const updates: Record<string, any> = {};
+
+      if (username && username !== user.username) {
+        // Check uniqueness
+        const [existing] = await db.select().from(users).where(eq(users.username, username));
+        if (existing) return res.status(400).json({ message: "Username sudah digunakan" });
+        updates.username = username;
+      }
+
+      if (newPassword) {
+        updates.password = await bcrypt.hash(newPassword, 10);
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "Tidak ada perubahan" });
+      }
+
+      await db.update(users).set(updates).where(eq(users.id, userId));
+      res.json({ message: "Akun berhasil diperbarui" });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.get("/api/settings/:key", async (req, res) => {
+
     const value = await storage.getSetting(req.params.key);
     res.json({ value });
   });
@@ -157,6 +240,7 @@ export async function registerRoutes(
   });
   
   await seedDatabase();
+  await seedAdminUser();
 
   return httpServer;
 }
