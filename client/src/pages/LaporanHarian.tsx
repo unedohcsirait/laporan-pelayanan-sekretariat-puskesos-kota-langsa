@@ -138,7 +138,7 @@ export default function LaporanHarianPage() {
     doc.line(20, 25, 190, 25);
     
     doc.setFontSize(10);
-    doc.text(`Periode: ${format(new Date(2026, Number(month)-1, 1), "MMMM yyyy", { locale: localeId })}`, 14, 35);
+    doc.text(`Periode: ${format(new Date(Number(year), Number(month)-1, 1), "MMMM yyyy", { locale: localeId })}`, 14, 35);
     
     autoTable(doc, {
       head: [['NO', 'JENIS LAYANAN', 'TANGGAL', 'JUMLAH', 'KETERANGAN']],
@@ -157,17 +157,44 @@ export default function LaporanHarianPage() {
     doc.save(`laporan-puskesos-${month}-${year}.pdf`);
   };
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     if (!filteredData) return;
-    const worksheet = XLSX.utils.json_to_sheet(filteredData.map(row => ({
-      Tanggal: row.tanggal,
-      Layanan: row.jenisLayanan.namaLayanan,
-      Jumlah: row.jumlah,
-      Keterangan: row.keterangan
-    })));
+    
+    let appTitle = "LAPORAN PELAYANAN SEKRETARIAT PUSKESOS KOTA LANGSA";
+    let appSubtitle = "DI KANTOR DINAS SOSIAL KOTA LANGSA";
+    
+    try {
+      const tRes = await fetch("/api/settings/app_title").then(res => res.json());
+      const sRes = await fetch("/api/settings/app_subtitle").then(res => res.json());
+      if (tRes.value) appTitle = tRes.value;
+      if (sRes.value) appSubtitle = sRes.value;
+    } catch (e) {}
+
+    const data = filteredData.map((row, index) => ({
+      'NO': index + 1,
+      'JENIS LAYANAN': row.jenisLayanan.namaLayanan,
+      'TANGGAL': format(new Date(row.tanggal), "dd MMM yyyy", { locale: localeId }),
+      'JUMLAH': `${row.jumlah} orang`,
+      'KETERANGAN': row.keterangan || "-"
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet([]);
+    
+    // Add custom headers like PDF
+    XLSX.utils.sheet_add_aoa(worksheet, [
+      [appTitle],
+      [appSubtitle],
+      [],
+      [`Periode: ${format(new Date(Number(year), Number(month)-1, 1), "MMMM yyyy", { locale: localeId })}`],
+      []
+    ], { origin: "A1" });
+
+    // Add table starting after header
+    XLSX.utils.sheet_add_json(worksheet, data, { origin: "A6", skipHeader: false });
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan");
-    XLSX.writeFile(workbook, `laporan-${month}-${year}.xlsx`);
+    XLSX.writeFile(workbook, `laporan-puskesos-${month}-${year}.xlsx`);
   };
 
   const activeServices = jenisLayanan?.filter(l => l.status) || [];

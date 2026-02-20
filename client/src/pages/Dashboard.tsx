@@ -25,10 +25,11 @@ export default function Dashboard() {
   
   const [month, setMonth] = useState(String(currentMonth));
   const [year, setYear] = useState(String(currentYear));
+  const [isYearly, setIsYearly] = useState(false);
   const [appTitle, setAppTitle] = useState("LAPORAN PELAYANAN SEKRETARIAT PUSKESOS KOTA LANGSA");
   const [appSubtitle, setAppSubtitle] = useState("DI KANTOR DINAS SOSIAL KOTA LANGSA");
   
-  const { data: summary, isLoading } = useLaporanSummary(month, year);
+  const { data: summary, isLoading } = useLaporanSummary(isYearly ? undefined : month, year);
 
   useEffect(() => {
     fetch("/api/settings/app_title").then(res => res.json()).then(data => {
@@ -39,10 +40,15 @@ export default function Dashboard() {
     });
   }, []);
 
-  const formattedChartData = summary?.totalPerHari.map(item => ({
-    name: format(new Date(item.tanggal), "dd MMM"),
-    value: item.total
-  })) || [];
+  const formattedChartData = isYearly 
+    ? summary?.totalPerBulan.map(item => ({
+        name: MONTHS[item.bulan - 1],
+        value: item.total
+      })) || []
+    : summary?.totalPerHari.map(item => ({
+        name: format(new Date(item.tanggal), "dd MMM"),
+        value: item.total
+      })) || [];
 
   const pieChartData = summary?.rankingLayanan.map(item => ({
     name: item.namaLayanan,
@@ -64,28 +70,50 @@ export default function Dashboard() {
             </div>
           </div>
           
-          <div className="flex gap-2 bg-white border border-border p-1 rounded-lg shadow-sm">
-            <Select value={month} onValueChange={setMonth}>
-              <SelectTrigger className="w-[140px] border-none shadow-none focus:ring-0">
-                <SelectValue placeholder="Bulan" />
-              </SelectTrigger>
-              <SelectContent>
-                {MONTHS.map((m, i) => (
-                  <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="w-px bg-border my-2" />
-            <Select value={year} onValueChange={setYear}>
-              <SelectTrigger className="w-[100px] border-none shadow-none focus:ring-0">
-                <SelectValue placeholder="Tahun" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="2024">2024</SelectItem>
-                <SelectItem value="2025">2025</SelectItem>
-                <SelectItem value="2026">2026</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <Button 
+                variant={isYearly ? "outline" : "default"} 
+                size="sm" 
+                onClick={() => setIsYearly(false)}
+              >
+                Bulanan
+              </Button>
+              <Button 
+                variant={isYearly ? "default" : "outline"} 
+                size="sm" 
+                onClick={() => setIsYearly(true)}
+              >
+                Tahunan
+              </Button>
+            </div>
+            <div className="flex gap-2 bg-white border border-border p-1 rounded-lg shadow-sm">
+              {!isYearly && (
+                <>
+                  <Select value={month} onValueChange={setMonth}>
+                    <SelectTrigger className="w-[140px] border-none shadow-none focus:ring-0">
+                      <SelectValue placeholder="Bulan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.map((m, i) => (
+                        <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="w-px bg-border my-2" />
+                </>
+              )}
+              <Select value={year} onValueChange={setYear}>
+                <SelectTrigger className="w-[100px] border-none shadow-none focus:ring-0">
+                  <SelectValue placeholder="Tahun" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2024">2024</SelectItem>
+                  <SelectItem value="2025">2025</SelectItem>
+                  <SelectItem value="2026">2026</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
@@ -100,15 +128,15 @@ export default function Dashboard() {
           ) : (
             <>
               <StatCard
-                title="Total Pelayanan"
+                title={isYearly ? "Total Pelayanan Tahun Ini" : "Total Pelayanan Bulan Ini"}
                 value={summary?.totalKeseluruhan || 0}
-                description="Total pasien bulan ini"
+                description={isYearly ? `Total pasien tahun ${year}` : `Total pasien bulan ${MONTHS[Number(month)-1]} ${year}`}
                 icon={Activity}
               />
               <StatCard
                 title="Rata-rata Harian"
                 value={Math.round(summary?.rataRataPerHari || 0)}
-                description="Pasien per hari"
+                description="Pasien per hari operasional"
                 icon={Calendar}
               />
               <StatCard
@@ -125,8 +153,12 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
             <div className="mb-6">
-              <h3 className="text-lg font-bold font-display text-primary">Grafik Harian</h3>
-              <p className="text-sm text-muted-foreground">Tren jumlah pelayanan per hari</p>
+              <h3 className="text-lg font-bold font-display text-primary">
+                {isYearly ? "Tren Bulanan" : "Tren Harian"}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {isYearly ? `Jumlah pelayanan per bulan tahun ${year}` : `Jumlah pelayanan per hari bulan ${MONTHS[Number(month)-1]}`}
+              </p>
             </div>
             <div className="h-[300px] w-full">
               {isLoading ? (

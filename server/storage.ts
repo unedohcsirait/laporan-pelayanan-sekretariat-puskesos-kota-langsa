@@ -136,6 +136,7 @@ export class DatabaseStorage implements IStorage {
     let totalKeseluruhan = 0;
     const rankingMap: Record<number, { namaLayanan: string, total: number }> = {};
     const dailyMap: Record<string, number> = {};
+    const monthlyMap: Record<number, number> = {};
     
     for (const lap of laporans) {
       totalKeseluruhan += lap.jumlah;
@@ -150,6 +151,12 @@ export class DatabaseStorage implements IStorage {
       const tgl = lap.tanggal;
       if (!dailyMap[tgl]) dailyMap[tgl] = 0;
       dailyMap[tgl] += lap.jumlah;
+
+      // Monthly (for yearly summary)
+      const dateObj = new Date(lap.tanggal);
+      const m = dateObj.getMonth() + 1;
+      if (!monthlyMap[m]) monthlyMap[m] = 0;
+      monthlyMap[m] += lap.jumlah;
     }
     
     const uniqueDays = Object.keys(dailyMap).length;
@@ -162,6 +169,7 @@ export class DatabaseStorage implements IStorage {
     return {
       totalKeseluruhan,
       totalPerHari: Object.entries(dailyMap).map(([tanggal, total]) => ({ tanggal, total })).sort((a,b) => a.tanggal.localeCompare(b.tanggal)),
+      totalPerBulan: Object.entries(monthlyMap).map(([bulan, total]) => ({ bulan: Number(bulan), total })).sort((a,b) => a.bulan - b.bulan),
       rataRataPerHari,
       rankingLayanan
     };
