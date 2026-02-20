@@ -1,18 +1,49 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, date, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { relations } from "drizzle-orm";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+// === TABLE DEFINITIONS ===
+export const jenisLayanan = pgTable("jenis_layanan", {
+  id: serial("id").primaryKey(),
+  namaLayanan: text("nama_layanan").notNull(),
+  status: boolean("status").default(true).notNull(), // true = aktif, false = nonaktif
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const laporanHarian = pgTable("laporan_harian", {
+  id: serial("id").primaryKey(),
+  tanggal: date("tanggal").notNull(), // Format YYYY-MM-DD
+  jenisLayananId: integer("jenis_layanan_id").notNull().references(() => jenisLayanan.id),
+  jumlah: integer("jumlah").notNull(),
+  keterangan: text("keterangan"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    // Tidak boleh ada duplikasi tanggal + jenis_layanan_id
+    unq: unique().on(table.tanggal, table.jenisLayananId)
+  }
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+// === RELATIONS ===
+export const laporanRelations = relations(laporanHarian, ({ one }) => ({
+  jenisLayanan: one(jenisLayanan, {
+    fields: [laporanHarian.jenisLayananId],
+    references: [jenisLayanan.id],
+  }),
+}));
+
+// === BASE SCHEMAS ===
+export const insertJenisLayananSchema = createInsertSchema(jenisLayanan).omit({ id: true });
+export const insertLaporanHarianSchema = createInsertSchema(laporanHarian).omit({ id: true, createdAt: true });
+
+// === EXPLICIT API CONTRACT TYPES ===
+export type JenisLayanan = typeof jenisLayanan.$inferSelect;
+export type InsertJenisLayanan = z.infer<typeof insertJenisLayananSchema>;
+export type UpdateJenisLayananRequest = Partial<InsertJenisLayanan>;
+
+export type LaporanHarian = typeof laporanHarian.$inferSelect;
+export type InsertLaporanHarian = z.infer<typeof insertLaporanHarianSchema>;
+export type UpdateLaporanHarianRequest = Partial<InsertLaporanHarian>;
+
+// Laporan harian joined with Jenis Layanan
+export type LaporanWithLayanan = LaporanHarian & { jenisLayanan: JenisLayanan };
