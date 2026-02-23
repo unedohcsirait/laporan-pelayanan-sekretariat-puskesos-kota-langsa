@@ -28,6 +28,7 @@ export const laporanHarian = pgTable("laporan_harian", {
   tanggal: date("tanggal").notNull(), // Format YYYY-MM-DD
   jenisLayananId: integer("jenis_layanan_id").notNull().references(() => jenisLayanan.id),
   jumlah: integer("jumlah").notNull(),
+  noKkList: text("no_kk_list"), // JSON array of KK/KTP numbers, nullable
   keterangan: text("keterangan"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => {
@@ -47,7 +48,13 @@ export const laporanRelations = relations(laporanHarian, ({ one }) => ({
 
 // === BASE SCHEMAS ===
 export const insertJenisLayananSchema = createInsertSchema(jenisLayanan).omit({ id: true });
-export const insertLaporanHarianSchema = createInsertSchema(laporanHarian).omit({ id: true, createdAt: true });
+// Base schema from table, then we make jumlah optional (auto-calculated from noKkList server-side)
+export const insertLaporanHarianSchema = createInsertSchema(laporanHarian)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    jumlah: z.number().int().positive().optional().default(1),
+    noKkList: z.string().nullable().optional(),
+  });
 
 // === EXPLICIT API CONTRACT TYPES ===
 export type JenisLayanan = typeof jenisLayanan.$inferSelect;

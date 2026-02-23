@@ -4,7 +4,7 @@ import { useJenisLayanan } from "@/hooks/use-layanan";
 import { useState, useMemo } from "react";
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { id as localeId } from "date-fns/locale";
-import { Plus, Search, FileDown, FileSpreadsheet, Pencil, Trash2, CalendarIcon } from "lucide-react";
+import { Plus, Search, FileDown, FileSpreadsheet, Pencil, Trash2, CalendarIcon, PlusCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,11 +33,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+// Form schema: jumlah is auto-calculated from kkList on submit
 const formSchema = insertLaporanHarianSchema.extend({
   tanggal: z.date(),
-  jumlah: z.coerce.number().min(1, "Jumlah minimal 1"),
   jenisLayananId: z.coerce.number().min(1, "Pilih layanan"),
-});
+  // kkList: array of KK/KTP numbers (client-side only, not sent to server directly)
+  kkList: z.array(z.string()).default([""]),
+}).omit({ jumlah: true, noKkList: true });
 
 const MONTHS = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -75,15 +77,13 @@ export default function LaporanHarianPage() {
 
   // Mingguan: custom date range
   const [weekFrom, setWeekFrom] = useState<Date>(() => {
-    // Default: awal minggu ini (Senin)
     const d = new Date();
-    const day = d.getDay(); // 0=Sun
+    const day = d.getDay();
     const diff = day === 0 ? -6 : 1 - day;
     d.setDate(d.getDate() + diff);
     return d;
   });
   const [weekTo, setWeekTo] = useState<Date>(() => {
-    // Default: akhir minggu ini (Minggu)
     const d = new Date();
     const day = d.getDay();
     const diff = day === 0 ? 0 : 7 - day;
@@ -98,7 +98,6 @@ export default function LaporanHarianPage() {
   const isDaily = viewMode === "daily";
   const isMonthly = viewMode === "monthly";
 
-  // Fetch: yearly = no month filter; daily/weekly = fetch by month of the dates; monthly = fetch by month
   const fetchMonth = isYearly ? undefined : isDaily ? String(dailyDate.getMonth() + 1) : isWeekly ? String(weekFrom.getMonth() + 1) : month;
   const fetchYear = isYearly ? year : isDaily ? String(dailyDate.getFullYear()) : isWeekly ? String(weekFrom.getFullYear()) : year;
 
@@ -112,33 +111,60 @@ export default function LaporanHarianPage() {
   const updateMutation = useUpdateLaporan();
   const deleteMutation = useDeleteLaporan();
 
+  const defaultValues = {
+    tanggal: new Date(),
+    keterangan: "",
+    kkList: [""],
+  };
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      tanggal: new Date(),
-      jumlah: 1,
-      keterangan: "",
-    },
+    defaultValues,
   });
 
+  const kkList = form.watch("kkList");
+
+  const addKkEntry = () => {
+    form.setValue("kkList", [...kkList, ""]);
+  };
+
+  const removeKkEntry = (index: number) => {
+    const updated = kkList.filter((_, i) => i !== index);
+    form.setValue("kkList", updated.length > 0 ? updated : [""]);
+  };
+
+  const updateKkEntry = (index: number, value: string) => {
+    const updated = [...kkList];
+    updated[index] = value;
+    form.setValue("kkList", updated);
+  };
+
+  // Count non-empty entries
+  const visitorCount = kkList.filter(k => k.trim() !== "").length;
+
   const onSubmit = (values: z.infer<typeof formSchema>) => {
+    const nonEmpty = values.kkList.filter(k => k.trim() !== "");
     const payload = {
-      ...values,
       tanggal: format(values.tanggal, "yyyy-MM-dd"),
+      jenisLayananId: values.jenisLayananId,
+      keterangan: values.keterangan,
+      // jumlah is auto-calculated server-side from noKkList
+      jumlah: nonEmpty.length > 0 ? nonEmpty.length : 1,
+      noKkList: nonEmpty.length > 0 ? JSON.stringify(nonEmpty) : null,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...payload }, {
         onSuccess: () => {
           setIsDialogOpen(false);
           setEditingId(null);
-          form.reset({ tanggal: new Date(), jumlah: 1, keterangan: "" });
+          form.reset(defaultValues);
         }
       });
     } else {
       createMutation.mutate(payload, {
         onSuccess: () => {
           setIsDialogOpen(false);
-          form.reset({ tanggal: new Date(), jumlah: 1, keterangan: "" });
+          form.reset(defaultValues);
         }
       });
     }
@@ -146,11 +172,18 @@ export default function LaporanHarianPage() {
 
   const handleEdit = (item: any) => {
     setEditingId(item.id);
+    let parsedKkList: string[] = [""];
+    if (item.noKkList) {
+      try {
+        const arr = JSON.parse(item.noKkList);
+        if (Array.isArray(arr) && arr.length > 0) parsedKkList = arr;
+      } catch {}
+    }
     form.reset({
       tanggal: new Date(item.tanggal),
-      jumlah: item.jumlah,
       keterangan: item.keterangan || "",
       jenisLayananId: item.jenisLayananId,
+      kkList: parsedKkList,
     });
     setIsDialogOpen(true);
   };
@@ -226,16 +259,26 @@ export default function LaporanHarianPage() {
     doc.setFontSize(10);
     doc.text(`Periode: ${getPeriodLabel()}`, 14, 35);
     autoTable(doc, {
-      head: [['NO', 'JENIS LAYANAN', 'TANGGAL', 'JUMLAH', 'KETERANGAN']],
-      body: filteredData.map((row, i) => [
-        i + 1,
-        row.jenisLayanan.namaLayanan,
-        format(parseISO(row.tanggal), "dd MMM yyyy", { locale: localeId }),
-        `${row.jumlah} orang`,
-        row.keterangan || "-"
-      ]),
+      head: [['NO', 'JENIS LAYANAN', 'TANGGAL', 'JML PENGUNJUNG', 'NO KK/KTP', 'KETERANGAN']],
+      body: filteredData.map((row, i) => {
+        let kkNos = "-";
+        if ((row as any).noKkList) {
+          try {
+            const arr = JSON.parse((row as any).noKkList);
+            if (Array.isArray(arr) && arr.length > 0) kkNos = arr.join(", ");
+          } catch {}
+        }
+        return [
+          i + 1,
+          row.jenisLayanan.namaLayanan,
+          format(parseISO(row.tanggal), "dd MMM yyyy", { locale: localeId }),
+          `${row.jumlah} orang`,
+          kkNos,
+          row.keterangan || "-"
+        ];
+      }),
       startY: 40,
-      styles: { fontSize: 8 },
+      styles: { fontSize: 7 },
       headStyles: { fillColor: [14, 165, 233] }
     });
     doc.save(getExportFilename("pdf"));
@@ -244,13 +287,23 @@ export default function LaporanHarianPage() {
   const exportExcel = async () => {
     if (!filteredData.length) return;
     const { appTitle, appSubtitle } = await getAppSettings();
-    const data = filteredData.map((row, i) => ({
-      'NO': i + 1,
-      'JENIS LAYANAN': row.jenisLayanan.namaLayanan,
-      'TANGGAL': format(parseISO(row.tanggal), "dd MMM yyyy", { locale: localeId }),
-      'JUMLAH': `${row.jumlah} orang`,
-      'KETERANGAN': row.keterangan || "-"
-    }));
+    const data = filteredData.map((row, i) => {
+      let kkNos = "-";
+      if ((row as any).noKkList) {
+        try {
+          const arr = JSON.parse((row as any).noKkList);
+          if (Array.isArray(arr) && arr.length > 0) kkNos = arr.join(", ");
+        } catch {}
+      }
+      return {
+        'NO': i + 1,
+        'JENIS LAYANAN': row.jenisLayanan.namaLayanan,
+        'TANGGAL': format(parseISO(row.tanggal), "dd MMM yyyy", { locale: localeId }),
+        'JML PENGUNJUNG': `${row.jumlah} orang`,
+        'NO KK/KTP': kkNos,
+        'KETERANGAN': row.keterangan || "-"
+      };
+    });
     const worksheet = XLSX.utils.json_to_sheet([]);
     XLSX.utils.sheet_add_aoa(worksheet, [
       [appTitle], [appSubtitle], [],
@@ -263,8 +316,6 @@ export default function LaporanHarianPage() {
   };
 
   const activeServices = jenisLayanan?.filter(l => l.status) || [];
-
-  // Generate year options (5 years around current)
   const yearOptions = Array.from({ length: 5 }, (_, i) => String(currentYear - 2 + i));
 
   return (
@@ -288,7 +339,7 @@ export default function LaporanHarianPage() {
               setIsDialogOpen(open);
               if (!open) {
                 setEditingId(null);
-                form.reset({ tanggal: new Date(), jumlah: 1, keterangan: "" });
+                form.reset(defaultValues);
               }
             }}>
               <DialogTrigger asChild>
@@ -297,7 +348,7 @@ export default function LaporanHarianPage() {
                 </Button>
               </DialogTrigger>
 
-              <DialogContent className="sm:max-w-[520px]">
+              <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader className="pb-2 border-b border-border">
                   <DialogTitle className="text-lg font-semibold">
                     {editingId ? "✏️ Edit Laporan" : "➕ Input Laporan Baru"}
@@ -380,26 +431,60 @@ export default function LaporanHarianPage() {
                       )}
                     />
 
-                    {/* Jumlah */}
-                    <FormField
-                      control={form.control}
-                      name="jumlah"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-semibold text-foreground">Jumlah Pasien</FormLabel>
-                          <FormControl>
+                    {/* No. KK / KTP Pengunjung */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-foreground text-sm">
+                            No. KK / KTP Pengunjung{" "}
+                            <span className="text-muted-foreground font-normal">(Opsional)</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Jumlah pengunjung dihitung otomatis:{" "}
+                            <span className="font-semibold text-primary">
+                              {visitorCount} orang
+                            </span>
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={addKkEntry}
+                          className="h-8 gap-1.5"
+                        >
+                          <PlusCircle className="h-3.5 w-3.5" />
+                          Tambah
+                        </Button>
+                      </div>
+
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {kkList.map((kk, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground w-5 text-right shrink-0">
+                              {index + 1}.
+                            </span>
                             <Input
-                              type="number"
-                              min={1}
-                              placeholder="Masukkan jumlah pasien"
-                              className="h-10 bg-white border-border"
-                              {...field}
+                              value={kk}
+                              onChange={(e) => updateKkEntry(index, e.target.value)}
+                              placeholder="Masukkan No. KK atau KTP…"
+                              className="h-9 bg-white border-border text-sm flex-1"
                             />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                            {kkList.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-red-500"
+                                onClick={() => removeKkEntry(index)}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
                     {/* Keterangan */}
                     <FormField
@@ -413,7 +498,7 @@ export default function LaporanHarianPage() {
                           <FormControl>
                             <Textarea
                               placeholder="Tambahkan catatan tambahan jika perlu…"
-                              className="resize-none bg-white border-border min-h-[80px]"
+                              className="resize-none bg-white border-border min-h-[70px]"
                               name={field.name}
                               ref={field.ref}
                               onBlur={field.onBlur}
@@ -454,7 +539,7 @@ export default function LaporanHarianPage() {
         {/* ─── View Mode Toggle + Filters ──────────────────────── */}
         <div className="bg-card border border-border/60 rounded-xl p-4 shadow-sm flex flex-col gap-3">
 
-          {/* Toggle: Harian → Mingguan → Bulanan → Tahunan */}
+          {/* Toggle */}
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-muted-foreground">Tampilan:</span>
             <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1 gap-1">
@@ -484,7 +569,7 @@ export default function LaporanHarianPage() {
               />
             </div>
 
-            {/* HARIAN: single date picker */}
+            {/* HARIAN */}
             {isDaily && (
               <Popover open={dailyOpen} onOpenChange={setDailyOpen}>
                 <PopoverTrigger asChild>
@@ -504,7 +589,7 @@ export default function LaporanHarianPage() {
               </Popover>
             )}
 
-            {/* MINGGUAN: date range from–to */}
+            {/* MINGGUAN */}
             {isWeekly && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-muted-foreground whitespace-nowrap">Dari:</span>
@@ -544,7 +629,7 @@ export default function LaporanHarianPage() {
               </div>
             )}
 
-            {/* BULANAN: month + year selector */}
+            {/* BULANAN */}
             {isMonthly && (
               <>
                 <Select value={month} onValueChange={setMonth}>
@@ -570,7 +655,7 @@ export default function LaporanHarianPage() {
               </>
             )}
 
-            {/* TAHUNAN: year selector only */}
+            {/* TAHUNAN */}
             {isYearly && (
               <Select value={year} onValueChange={setYear}>
                 <SelectTrigger className="w-full md:w-[110px] bg-white border-border h-10">
@@ -599,7 +684,8 @@ export default function LaporanHarianPage() {
               <TableRow>
                 <TableHead>Tanggal</TableHead>
                 <TableHead>Jenis Layanan</TableHead>
-                <TableHead className="text-right">Jumlah</TableHead>
+                <TableHead className="text-center">Jml Pengunjung</TableHead>
+                <TableHead>No. KK/KTP</TableHead>
                 <TableHead>Keterangan</TableHead>
                 <TableHead className="w-[100px] text-right">Aksi</TableHead>
               </TableRow>
@@ -607,51 +693,76 @@ export default function LaporanHarianPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     Memuat data...
                   </TableCell>
                 </TableRow>
               ) : filteredData?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                     Tidak ada data ditemukan.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredData?.map((item) => (
-                  <TableRow key={item.id} className="hover:bg-muted/30">
-                    <TableCell className="font-medium">
-                      {format(parseISO(item.tanggal), "dd MMM yyyy", { locale: localeId })}
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                        {item.jenisLayanan.namaLayanan}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right font-bold">{item.jumlah}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm truncate max-w-[200px]">
-                      {item.keterangan || "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost" size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                          onClick={() => handleEdit(item)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost" size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                          onClick={() => setDeleteId(item.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                filteredData?.map((item) => {
+                  let kkNumbers: string[] = [];
+                  if ((item as any).noKkList) {
+                    try {
+                      const arr = JSON.parse((item as any).noKkList);
+                      if (Array.isArray(arr)) kkNumbers = arr;
+                    } catch {}
+                  }
+                  return (
+                    <TableRow key={item.id} className="hover:bg-muted/30">
+                      <TableCell className="font-medium">
+                        {format(parseISO(item.tanggal), "dd MMM yyyy", { locale: localeId })}
+                      </TableCell>
+                      <TableCell>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                          {item.jenisLayanan.namaLayanan}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center font-bold">{item.jumlah}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground max-w-[200px]">
+                        {kkNumbers.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {kkNumbers.slice(0, 3).map((kk, i) => (
+                              <span key={i} className="inline-flex px-1.5 py-0.5 rounded bg-muted text-xs">
+                                {kk}
+                              </span>
+                            ))}
+                            {kkNumbers.length > 3 && (
+                              <span className="text-xs text-muted-foreground">+{kkNumbers.length - 3} lagi</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm truncate max-w-[150px]">
+                        {item.keterangan || "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleEdit(item)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                            onClick={() => setDeleteId(item.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

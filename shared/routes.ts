@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertJenisLayananSchema, insertLaporanHarianSchema, jenisLayanan, laporanHarian } from './schema';
+import { insertJenisLayananSchema, insertLaporanHarianSchema, jenisLayanan, laporanHarian } from './schema.js';
 
 export const errorSchemas = {
   validation: z.object({

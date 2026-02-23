@@ -133,19 +133,19 @@ export default function Dashboard() {
               <StatCard
                 title={isYearly ? "Total Pelayanan Tahun Ini" : "Total Pelayanan Bulan Ini"}
                 value={summary?.totalKeseluruhan || 0}
-                description={`Total pasien ${isYearly ? `Tahun ${year}` : `${MONTHS[Number(month)-1]} ${year}`}`}
+                description={`Total Pengunjung ${isYearly ? `Tahun ${year}` : `${MONTHS[Number(month)-1]} ${year}`}`}
                 icon={Activity}
               />
               <StatCard
                 title="Rata-rata Harian"
                 value={Math.round(summary?.rataRataPerHari || 0)}
-                description="Pasien per hari operasional"
+                description="Pengunjung per hari operasional"
                 icon={Calendar}
               />
               <StatCard
                 title="Layanan Terpopuler"
                 value={summary?.rankingLayanan[0]?.namaLayanan || "-"}
-                description={`${summary?.rankingLayanan[0]?.total || 0} pasien`}
+                description={`${summary?.rankingLayanan[0]?.total || 0} Pengunjung`}
                 icon={Trophy}
               />
             </>
@@ -198,7 +198,7 @@ export default function Dashboard() {
           <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
             <div className="mb-6">
               <h3 className="text-lg font-bold font-display text-primary">Komposisi Layanan</h3>
-              <p className="text-sm text-muted-foreground">Proporsi total pasien per jenis layanan</p>
+              <p className="text-sm text-muted-foreground">Proporsi total pengunjung per jenis layanan</p>
             </div>
             <div className="h-[300px] w-full">
               {isLoading ? (

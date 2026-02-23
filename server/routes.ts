@@ -1,15 +1,50 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage } from "./storage";
-import { api } from "@shared/routes";
+import { storage } from "./storage.js";
+import { api } from "../shared/routes.js";
 import { z } from "zod";
 import passport from "passport";
-import { requireAuth, seedAdminUser } from "./auth";
+import { requireAuth, seedAdminUser } from "./auth.js";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // === HEALTH CHECK (Diagnostik) ===
+  app.get("/api/health-check", async (req, res) => {
+    try {
+      const dbUrl = process.env.DATABASE_URL;
+      const sessionSecret = process.env.SESSION_SECRET;
+      
+      // Test DB connection
+      const { pool } = await import("./db");
+      let dbStatus = "unknown";
+      let dbError = null;
+      try {
+        await pool.query("SELECT 1");
+        dbStatus = "connected";
+      } catch (e: any) {
+        dbStatus = "failed";
+        dbError = e.message;
+      }
+
+      res.json({
+        status: "ok",
+        env: {
+          DATABASE_URL: dbUrl ? "set (length: " + dbUrl.length + ")" : "missing",
+          SESSION_SECRET: sessionSecret ? "set" : "missing",
+          NODE_ENV: process.env.NODE_ENV
+        },
+        db: {
+          status: dbStatus,
+          error: dbError
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ status: "error", message: err.message });
+    }
+  });
 
   // === AUTH ROUTES (tidak perlu auth) ===
   app.post("/api/login", (req, res, next) => {
@@ -47,7 +82,7 @@ export async function registerRoutes(
   app.put("/api/auth/account", async (req, res, next) => {
     try {
       const { db } = await import("./db");
-      const { users } = await import("@shared/schema");
+      const { users } = await import("../shared/schema");
       const { eq } = await import("drizzle-orm");
       const bcrypt = (await import("bcryptjs")).default;
 
@@ -179,14 +214,25 @@ export async function registerRoutes(
   app.post(api.laporanHarian.create.path, async (req, res) => {
     try {
       const input = api.laporanHarian.create.input.parse(req.body);
+
+      // Auto-calculate jumlah from noKkList
+      let noKkEntries: string[] = [];
+      if (input.noKkList) {
+        try { noKkEntries = JSON.parse(input.noKkList).filter((s: string) => s.trim() !== ""); } catch {}
+      }
+      const finalInput = {
+        ...input,
+        jumlah: noKkEntries.length > 0 ? noKkEntries.length : (input.jumlah ?? 1),
+        noKkList: noKkEntries.length > 0 ? JSON.stringify(noKkEntries) : null,
+      };
       
       // Check duplicate
-      const existing = await storage.getLaporanByDateAndLayanan(input.tanggal, input.jenisLayananId);
+      const existing = await storage.getLaporanByDateAndLayanan(finalInput.tanggal, finalInput.jenisLayananId);
       if (existing) {
         return res.status(400).json({ message: "Laporan untuk layanan ini pada tanggal tersebut sudah ada." });
       }
 
-      const data = await storage.createLaporan(input);
+      const data = await storage.createLaporan(finalInput);
       res.status(201).json(data);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -203,12 +249,27 @@ export async function registerRoutes(
       
       const existing = await storage.getLaporan(id);
       if (!existing) return res.status(404).json({ message: "Laporan tidak ditemukan" });
+
+      // Auto-calculate jumlah from noKkList
+      let noKkEntries: string[] = [];
+      if (input.noKkList) {
+        try { noKkEntries = JSON.parse(input.noKkList).filter((s: string) => s.trim() !== ""); } catch {}
+      }
+      const finalInput = {
+        ...input,
+        ...(noKkEntries.length > 0 ? {
+          jumlah: noKkEntries.length,
+          noKkList: JSON.stringify(noKkEntries),
+        } : {
+          noKkList: null,
+        }),
+      };
       
       // Check duplicate if date or jenisLayananId changed
-      if ((input.tanggal && input.tanggal !== existing.tanggal) || 
-          (input.jenisLayananId && input.jenisLayananId !== existing.jenisLayananId)) {
-        const checkTanggal = input.tanggal || existing.tanggal;
-        const checkLayanan = input.jenisLayananId || existing.jenisLayananId;
+      if ((finalInput.tanggal && finalInput.tanggal !== existing.tanggal) || 
+          (finalInput.jenisLayananId && finalInput.jenisLayananId !== existing.jenisLayananId)) {
+        const checkTanggal = finalInput.tanggal || existing.tanggal;
+        const checkLayanan = finalInput.jenisLayananId || existing.jenisLayananId;
         const duplicate = await storage.getLaporanByDateAndLayanan(checkTanggal, checkLayanan);
         
         if (duplicate && duplicate.id !== id) {
@@ -216,7 +277,7 @@ export async function registerRoutes(
         }
       }
 
-      const data = await storage.updateLaporan(id, input);
+      const data = await storage.updateLaporan(id, finalInput);
       res.json(data);
     } catch (err) {
       if (err instanceof z.ZodError) {

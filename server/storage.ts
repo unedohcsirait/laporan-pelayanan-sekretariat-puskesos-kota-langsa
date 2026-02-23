@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "./db.js";
 import {
   settings,
   jenisLayanan,
@@ -10,7 +10,7 @@ import {
   type InsertLaporanHarian,
   type UpdateLaporanHarianRequest,
   type LaporanWithLayanan
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { eq, and, sql, desc } from "drizzle-orm";
 
 export interface IStorage {

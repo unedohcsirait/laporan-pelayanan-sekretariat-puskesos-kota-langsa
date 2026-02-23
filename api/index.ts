@@ -1,8 +1,8 @@
 import "dotenv/config";
 import express from "express";
-import { registerRoutes } from "../server/routes";
+import { registerRoutes } from "../server/routes.js";
 import { createServer } from "http";
-import { setupAuth } from "../server/auth";
+import { setupAuth } from "../server/auth.js";
 
 const app = express();
 const httpServer = createServer(app);

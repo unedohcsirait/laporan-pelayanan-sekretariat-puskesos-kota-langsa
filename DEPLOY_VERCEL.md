@@ -53,3 +53,24 @@ Di halaman konfigurasi "Configure Project":
 Jika login gagal atau ada error:
 - Cek tab **Logs** di dashboard Vercel project Anda.
 - Pastikan `DATABASE_URL` benar dan bisa diakses dari luar.
+- Pastikan `DATABASE_URL` benar dan bisa diakses dari luar.
+
+## Alternatif: Deploy via Vercel CLI
+
+Jika Anda ingin deploy manual tanpa `git push`, gunakan **Vercel CLI**.
+
+1. Install CLI (jika belum):
+   ```bash
+   npm i -g vercel
+   ```
+
+2. Login ke akun Vercel:
+   ```bash
+   vercel login
+   ```
+
+3. Deploy ke Production:
+   ```bash
+   vercel --prod
+   ```
+   Ikuti instruksi di terminal (pilih scope, link ke project yang sudah ada, settings default `y`).
